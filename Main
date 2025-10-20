@@ -1,0 +1,222 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { Heart } from "lucide-react";
+import { Card, CardContent } from "/components/ui/card";
+import { Button } from "/components/ui/button";
+
+const GAME_WIDTH = 800;
+const GAME_HEIGHT = 600;
+const PLAYER_SIZE = 40;
+const PROJECTILE_SIZE = 10;
+const MOVE_SPEED = 5;
+const PROJECTILE_SPEED = 10;
+
+type Position = { x: number; y: number };
+type Projectile = Position & { id: number };
+
+export default function MiniFortnite() {
+  // Player state
+  const [playerPosition, setPlayerPosition] = useState<Position>({ 
+    x: GAME_WIDTH / 2 - PLAYER_SIZE / 2, 
+    y: GAME_HEIGHT / 2 - PLAYER_SIZE / 2 
+  });
+  const [playerHealth, setPlayerHealth] = useState(100);
+  const [score, setScore] = useState(0);
+  
+  // Game state
+  const [projectiles, setProjectiles] = useState<Projectile[]>([]);
+  const [keysPressed, setKeysPressed] = useState<Record<string, boolean>>({});
+  const [gameActive, setGameActive] = useState(true);
+  
+  const projectileId = useRef(0);
+  const gameAreaRef = useRef<HTMLDivElement>(null);
+
+  // Handle keyboard input
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      setKeysPressed(prev => ({ ...prev, [e.key.toLowerCase()]: true }));
+      
+      // Shooting with spacebar
+      if (e.key === " " && gameActive) {
+        shoot();
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      setKeysPressed(prev => ({ ...prev, [e.key.toLowerCase()]: false }));
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [gameActive]);
+
+  // Game loop
+  useEffect(() => {
+    if (!gameActive) return;
+
+    const gameLoop = setInterval(() => {
+      // Move player
+      setPlayerPosition(prev => {
+        let newX = prev.x;
+        let newY = prev.y;
+
+        if (keysPressed["w"] || keysPressed["arrowup"]) {
+          newY = Math.max(0, newY - MOVE_SPEED);
+        }
+        if (keysPressed["s"] || keysPressed["arrowdown"]) {
+          newY = Math.min(GAME_HEIGHT - PLAYER_SIZE, newY + MOVE_SPEED);
+        }
+        if (keysPressed["a"] || keysPressed["arrowleft"]) {
+          newX = Math.max(0, newX - MOVE_SPEED);
+        }
+        if (keysPressed["d"] || keysPressed["arrowright"]) {
+          newX = Math.min(GAME_WIDTH - PLAYER_SIZE, newX + MOVE_SPEED);
+        }
+
+        return { x: newX, y: newY };
+      });
+
+      // Move projectiles
+      setProjectiles(prev => {
+        return prev
+          .map(proj => ({
+            ...proj,
+            x: proj.x + PROJECTILE_SPEED
+          }))
+          .filter(proj => proj.x < GAME_WIDTH);
+      });
+    }, 16);
+
+    return () => clearInterval(gameLoop);
+  }, [keysPressed, gameActive]);
+
+  const shoot = () => {
+    setProjectiles(prev => [
+      ...prev,
+      {
+        id: projectileId.current++,
+        x: playerPosition.x + PLAYER_SIZE,
+        y: playerPosition.y + PLAYER_SIZE / 2 - PROJECTILE_SIZE / 2
+      }
+    ]);
+  };
+
+  const resetGame = () => {
+    setPlayerPosition({ 
+      x: GAME_WIDTH / 2 - PLAYER_SIZE / 2, 
+      y: GAME_HEIGHT / 2 - PLAYER_SIZE / 2 
+    });
+    setPlayerHealth(100);
+    setScore(0);
+    setProjectiles([]);
+    setGameActive(true);
+  };
+
+  // Simple collision detection for demo
+  useEffect(() => {
+    if (projectiles.length > 0 && Math.random() > 0.99) {
+      setPlayerHealth(prev => {
+        const newHealth = prev - 10;
+        if (newHealth <= 0) {
+          setGameActive(false);
+        }
+        return Math.max(0, newHealth);
+      });
+    }
+    
+    // Random score increase
+    if (Math.random() > 0.995 && gameActive) {
+      setScore(prev => prev + 10);
+    }
+  }, [projectiles, gameActive]);
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-blue-900 to-purple-900 p-4">
+      <Card className="w-full max-w-4xl bg-gray-900 border-gray-700 shadow-2xl">
+        <CardContent className="p-6">
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center space-x-2">
+              <Heart className="text-red-500" />
+              <div className="w-32 h-6 bg-gray-700 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-red-500 transition-all duration-300"
+                  style={{ width: `${playerHealth}%` }}
+                />
+              </div>
+              <span className="text-white font-bold">{playerHealth}%</span>
+            </div>
+            
+            <div className="text-2xl font-bold text-yellow-400">
+              Score: {score}
+            </div>
+            
+            <Button 
+              onClick={resetGame}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              Reset Game
+            </Button>
+          </div>
+          
+          <div 
+            ref={gameAreaRef}
+            className="relative bg-gray-800 border-2 border-gray-700 rounded-lg overflow-hidden"
+            style={{ width: GAME_WIDTH, height: GAME_HEIGHT }}
+          >
+            {/* Player */}
+            <div 
+              className="absolute bg-blue-500 rounded-sm flex items-center justify-center"
+              style={{
+                left: playerPosition.x,
+                top: playerPosition.y,
+                width: PLAYER_SIZE,
+                height: PLAYER_SIZE,
+              }}
+            >
+              <div className="w-4 h-4 bg-blue-300 rounded-full" />
+            </div>
+            
+            {/* Projectiles */}
+            {projectiles.map(proj => (
+              <div
+                key={proj.id}
+                className="absolute bg-yellow-400 rounded-full"
+                style={{
+                  left: proj.x,
+                  top: proj.y,
+                  width: PROJECTILE_SIZE,
+                  height: PROJECTILE_SIZE,
+                }}
+              />
+            ))}
+            
+            {/* Game over overlay */}
+            {!gameActive && (
+              <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center">
+                <h2 className="text-4xl font-bold text-red-500 mb-4">Game Over!</h2>
+                <p className="text-2xl text-white mb-6">Final Score: {score}</p>
+                <Button 
+                  onClick={resetGame}
+                  className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 text-lg"
+                >
+                  Play Again
+                </Button>
+              </div>
+            )}
+          </div>
+          
+          <div className="mt-4 text-center text-gray-300">
+            <p className="mb-2">Controls: WASD or Arrow Keys to move, Spacebar to shoot</p>
+            <p>Survive as long as possible and earn points!</p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
